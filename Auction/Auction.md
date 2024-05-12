@@ -35,8 +35,7 @@
     function placeBid(uint256 _auctionId, uint256 _amount) public {
         bids[_auctionId][msg.sender] = _amount;
     }
-}
-```
+
 
    - 在这个示例中，` auctions `是一个映射，用于存储拍卖物品的编号和对应的拍卖信息。而 ` bids ` 是一个双重映射，用于存储每个拍卖物品的编号和对应的竞拍者出价记录。其中，外部映射的键是拍卖物品的编号，内部映射的键是竞拍者的地址，值是竞拍者的出价金额。
 
