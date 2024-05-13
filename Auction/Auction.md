@@ -8,37 +8,128 @@
    - ***拍卖物品映射（mapping）***：使用映射存储拍卖物品的编号和对应的拍卖信息。
    - ***竞拍者出价记录映射（mapping）***：使用映射存储每个拍卖物品的编号和对应的竞拍者出价记录。
    ### 在 Solidity 中，映射（mapping）是一种用于存储键值对的数据结构，类似于其他编程语言中的字典或关联数组。映射由键和值组成，其中键是唯一的，并且可以是任意可哈希的数据类型，而值可以是任意类型的数据。
-   在拍卖合约中，可以使用映射来存储拍卖物品的编号和对应的拍卖信息，以及存储每个拍卖物品的编号和对应的竞拍者出价记录。
+   这里的竞拍者信息不需要存储，是每个人都可以参与竞拍的。
+   下面这个例子是为了解决如何实现将卖家名下的NFT变成拍卖品的问题的一个小demo，还有很多不完善，先凑合着看。
+```solidity
+// SPDX-License-Identifier: MIT
+ pragma solidity ^0.8.0;
 
-   - 示例代码如下所示：
+// 导入 OpenZeppelin 的 ERC721 相关合约
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
 
-   ```solidity
-   contract EnglishAuction {
-    struct AuctionItem {
-        address seller;
-        uint256 startingPrice;
-        // other fields
+contract NFTAuction is ERC721Holder {
+    // 定义拍卖结构体
+    struct Auction {
+        address seller;         // 卖家地址
+        uint256 tokenId;        // NFT 的 tokenId
+        uint256 startPrice;     // 起拍价
+        uint256 startTime;      // 拍卖开始时间
+        uint256 endTime;        // 拍卖结束时间
+        address highestBidder;  // 最高出价者地址
+        uint256 highestBid;     // 最高出价
+        bool ended;             // 拍卖是否结束
     }
-    
-    mapping(uint256 => AuctionItem) public auctions;
-    mapping(uint256 => mapping(address => uint256)) public bids;
-    uint256 public nextAuctionId;
-    
-    function createAuction(uint256 _startingPrice) public {
-        nextAuctionId++;
-        auctions[nextAuctionId] = AuctionItem({
+
+    // 存储每个 tokenId 对应的拍卖信息
+    mapping(uint256 => Auction) public auctions;
+
+    // 定义拍卖创建事件
+    event AuctionCreated(uint256 tokenId, uint256 startPrice, uint256 startTime, uint256 endTime);
+
+    // 定义拍卖结束事件
+    event AuctionEnded(uint256 tokenId, address winner, uint256 highestBid);
+
+    // 创建拍卖
+    function createAuction(uint256 tokenId, uint256 startPrice, uint256 duration) external {
+        // 起拍价必须大于零
+        require(startPrice > 0, "Start price must be greater than zero");
+        // 拍卖持续时间必须大于零
+        require(duration > 0, "Duration must be greater than zero");
+
+        // 获取 NFT 合约实例
+        IERC721 token = IERC721(msg.sender);
+        // 将 NFT 转移给拍卖合约
+        token.safeTransferFrom(msg.sender, address(this), tokenId);
+
+        // 创建拍卖信息并存储到映射中
+        auctions[tokenId] = Auction({
             seller: msg.sender,
-            startingPrice: _startingPrice
+            tokenId: tokenId,
+            startPrice: startPrice,
+            startTime: block.timestamp,
+            endTime: block.timestamp + duration,
+            highestBidder: address(0),
+            highestBid: 0,
+            ended: false
         });
+
+        // 触发拍卖创建事件
+        emit AuctionCreated(tokenId, startPrice, block.timestamp, block.timestamp + duration);
     }
-    
-    function placeBid(uint256 _auctionId, uint256 _amount) public {
-        bids[_auctionId][msg.sender] = _amount;
+
+    // 出价
+    function bid(uint256 tokenId) external payable {
+        // 获取拍卖信息
+        Auction storage auction = auctions[tokenId];
+        // 拍卖必须已经开始
+        require(block.timestamp >= auction.startTime, "Auction has not started yet");
+        // 拍卖必须未结束
+        require(block.timestamp < auction.endTime, "Auction has ended");
+        // 出价必须高于当前最高出价
+        require(msg.value > auction.highestBid, "Bid must be higher than current highest bid");
+
+        // 如果存在最高出价者，则将其出价返还
+        if (auction.highestBidder != address(0)) {
+            payable(auction.highestBidder).transfer(auction.highestBid);
+        }
+
+        // 更新最高出价者和最高出价
+        auction.highestBidder = msg.sender;
+        auction.highestBid = msg.value;
+    }
+
+    // 结束拍卖
+    function endAuction(uint256 tokenId) external {
+        // 获取拍卖信息
+        Auction storage auction = auctions[tokenId];
+        // 拍卖必须已经结束
+        require(block.timestamp >= auction.endTime, "Auction has not ended yet");
+        // 拍卖必须未结束
+        require(!auction.ended, "Auction already ended");
+
+        // 标记拍卖已结束
+        auction.ended = true;
+
+        // 如果存在最高出价者
+        if (auction.highestBidder != address(0)) {
+            // 将 NFT 转移给最高出价者
+            IERC721 token = IERC721(auction.seller);
+            token.safeTransferFrom(address(this), auction.highestBidder, tokenId);
+            // 将最高出价转给卖家
+            payable(auction.seller).transfer(auction.highestBid);
+            // 触发拍卖结束事件
+            emit AuctionEnded(tokenId, auction.highestBidder, auction.highestBid);
+        } else {
+            // 如果没有最高出价者，则将 NFT 转移回卖家
+            token.safeTransferFrom(address(this), auction.seller, tokenId);
+        }
     }
 }
-```
+``` 
+*** 这部分代码是为了导入 OpenZeppelin 的 ERC721 相关合约，这些合约提供了用于创建和管理 ERC721 NFT（非同质化代币）的基本功能。具体来说： ***
 
-   - 在这个示例中，` auctions `是一个映射，用于存储拍卖物品的编号和对应的拍卖信息。而 ` bids ` 是一个双重映射，用于存储每个拍卖物品的编号和对应的竞拍者出价记录。其中，外部映射的键是拍卖物品的编号，内部映射的键是竞拍者的地址，值是竞拍者的出价金额。
+- `IERC721.sol` 定义了 ERC721 标准接口，包括了 NFT 的基本操作方法，如转移、授权等。
+- `ERC721Holder.sol` 是一个辅助合约，用于接收和持有 ERC721 NFT，通常用于确保在交易过程中能够安全地处理 NFT。
+- `balanceOf(address _owner)`: 返回 `_owner` 拥有的代币数量。
+- `ownerOf(uint256 _tokenId)`: 返回 `_tokenId` 代表的代币的所有者地址。
+- `approve(address _to, uint256 _tokenId)`: 授权 `_to` 地址可以转移 `_tokenId` 代表的代币。
+- `getApproved(uint256 _tokenId)`: 返回被授权转移 `_tokenId` 代币的地址。
+- `setApprovalForAll(address _operator, bool _approved)`: 设置 `_operator` 可以转移该合约所有者所有的代币。
+- `isApprovedForAll(address _owner, address _operator)`: 返回 `_operator` 是否被授权转移 `_owner` 所有的代币。
+- `transferFrom(address _from, address _to, uint256 _tokenId)`: 从 `_from` 地址向 `_to` 地址转移 `_tokenId` 代表的代币。
+- `safeTransferFrom(address _from, address _to, uint256 _tokenId)`: 安全地从 `_from` 地址向 `_to` 地址转移 `_tokenId` 代表的代币。
+- `safeTransferFrom(address _from, address _to, uint256 _tokenId, bytes data)`: 安全地从 `_from` 地址向 `_to` 地址转移 `_tokenId` 代表的代币，并传递附加数据。
 
 2. **初始化**：
    - 设置合约的起拍价、拍卖者信息等。
@@ -75,7 +166,8 @@
    - 2. 定义一个 mapping 用于存储拍卖物品的编号和对应的拍卖信息。
    - 3. 编写一个函数用于创建拍卖，该函数将拍卖物品信息存储到 mapping 中，并要求卖家质押起拍价的20%。
    - 4. 使用 msg.value 来获取卖家发送的以太币，确保发送的金额符合要求。
-*Example:*
+
+**Example:**
 ```solidity
 contract EnglishAuction {
     struct AuctionItem {
@@ -89,7 +181,7 @@ contract EnglishAuction {
     uint256 public nextAuctionId;
 
     function createAuction(uint256 _startingPrice, uint256 _depositPercentage) public payable {
-        require(_depositPercentage > 0 && _depositPercentage <= 100, "Invalid deposit percentage");
+        require(_depositPercentage > 20 && _depositPercentage <= 100, "Invalid deposit percentage");
         require(msg.value >= (_startingPrice * _depositPercentage / 100), "Insufficient deposit");
 
         nextAuctionId++;
@@ -101,9 +193,10 @@ contract EnglishAuction {
         });
     }
 }
-    - 在这个示例中，createAuction 函数用于创建拍卖，要求卖家发送的以太币必须大于或等于起拍价乘以质押比例的20%。如果发送的金额不足，则会触发 `require` 异常。
+- 在这个示例中，createAuction 函数用于创建拍卖，要求卖家发送的以太币必须大于或等于起拍价乘以质押比例的20%。如果发送的金额不足，则会触发 `require` 异常。
 
-4. **竞拍**：
+
+4. 竞拍：
    - 允许竞拍者进行出价。
 ```solidity
 contract EnglishAuction {
@@ -133,12 +226,12 @@ contract EnglishAuction {
         auctions[_itemId].currentHighestBidder = msg.sender;
     }
 }
-    - 这个合约包含了一个 `AuctionItem` 结构体，用于存储拍卖物品的信息，包括卖家地址、起拍价、当前最高出价和当前最高出价者。通过 bid 函数，竞拍者可以对拍卖物品进行竞拍，要求竞拍金额高于当前最高出价，否则会失败。如果有新的最高出价，之前的最高出价者将收到退回的出价金额，并且更新当前最高出价和最高出价者为新的竞拍者。
+    - 这个合约包含了一个 `AuctionItem` 结构体，用于存储拍卖物品的信息，包括卖家地址、起拍价、当前最高出价和当前最高出价者。通过 `bid `函数，竞拍者可以对拍卖物品进行竞拍，要求竞拍金额高于当前最高出价，否则会失败。如果有新的最高出价，之前的最高出价者将收到退回的出价金额，并且更新当前最高出价和最高出价者为新的竞拍者。
 
-5. **拍卖成功处理**：
+5. 拍卖成功处理：
    - 成交后，归还卖家质押的20%。
    - 抽取成交额的5%作为平台手续费，其中3%分给参与叫价的竞拍者，2%归平台。
-   *示例：*
+   示例：
    ```solidity
    contract EnglishAuction {
     struct AuctionItem {
@@ -187,8 +280,8 @@ contract EnglishAuction {
         platformAddress.transfer(platformReward);
     }
 }
-    ```
-    * ### ps：`platform address` 为平台地址! *
+```
+    ps：`platform address` 为平台地址! 
     - 按比例分配的逻辑是：
     1.`bidAmount` 变量存储了当前拍卖物品的最高出价金额，即竞拍者当前出价的金额。
     2.`bidderReward `变量计算了竞拍者应获得的手续费奖励。计算方法是竞拍者出价金额 `bidAmount` 乘以竞拍者手续费比例 `bidderFee`,然后除以总金额 3.`totalAmount`。这样计算可以保证竞拍者获得的奖励与其出价的比例成正比。
@@ -300,11 +393,12 @@ contract EnglishAuction {
         // 转账给竞拍者
         pendingReturns[highestBidder] += bidderRewards;
     }
-}```
+}
+```
    - `platformAddress` 和 `fundPoolAddress` 是在合约初始化时设置的平台和资金池地址。在拍卖结束时，根据计算的结果，将资金分配到相应的地址。
-9. **测试**：
+9. 测试：
    - 编写测试用例，测试合约的各项功能是否正常。
-   ```Solidity
+```Solidity
     contract EnglishAuctionTest {
     // 合约实例
     EnglishAuction auction;
@@ -332,6 +426,15 @@ contract EnglishAuction {
 
         // 创建一个拍卖并获取拍卖ID
         auctionId = auction.createAuction(seller, 100);
+    }
+
+    // 测试NFT功能
+    function testNFT() public {
+        // 添加NFT到拍卖合约
+        auction.addNFT(auctionId, 1, {from: seller});
+
+        // 检查NFT是否成功添加到拍卖合约
+        assert(auction.getAuctionNFT(auctionId) == 1);
     }
 
     // 测试竞拍功能
@@ -368,7 +471,16 @@ contract EnglishAuction {
         // 检查拍卖是否已结束
         assert(auction.ended(auctionId) == true);
     }
+    
+    // 测试显示竞拍者奖励金额功能
+    function testShowBidderRewards() public {
+        // 检查竞拍者1的奖励金额是否正确
+        assert(bidder1Reward == 0); // 竞拍失败，奖励为0
+        // 检查竞拍者2的奖励金额是否正确
+        assert(bidder2Reward == 120); // 竞拍成功，奖励为出价金额
+    }
 }
+
 ```
 - 测试时可以检查正常拍卖功能，还可以显示出如果存在的参与竞拍者的奖励金额。
  ps:（在想有没有可能在竞拍者试图参与竞拍的时候就显示可能获得的奖励金额呢？这样会不会更激励参与竞拍？）
@@ -382,7 +494,6 @@ contract EnglishAuction {
 * ## 总结：## *
 目前尚未解决的：
  - 1.各个函数的整合，让它成为一个完整的可用的合约项目代码。
- - 2.方案是否还有瑕疵？还有什么地方没有完善？
- - 3.核心的比如奖励竞拍者的代码逻辑我都基本看过改过了，应该没有什么大问题，但是难免有纰漏，各位在使用的时候还要再看一遍，以防有错误。
- - 4.前端页面尚未解决。
- - 5.合约调用怎么写也是勠需解决的问题之一。
+ - 2.核心的比如奖励竞拍者的代码逻辑我都基本看过改过了，应该没有什么大问题，但是难免有纰漏，各位在使用的时候还要再看一遍，以防有错误。
+ - 3.前端页面尚未解决。现在这个问题是前端，想法就是可以就是有一个人地址登录之后，它就能显示他这个地址下所有的NFT，然后他可以去添加NFT发起拍卖。
+ - 4.合约调用怎么写也是勠需解决的问题之一。
