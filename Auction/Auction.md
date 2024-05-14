@@ -193,8 +193,8 @@ contract EnglishAuction {
         });
     }
 }
+```
 - 在这个示例中，createAuction 函数用于创建拍卖，要求卖家发送的以太币必须大于或等于起拍价乘以质押比例的20%。如果发送的金额不足，则会触发 `require` 异常。
-
 
 4. 竞拍：
    - 允许竞拍者进行出价。
@@ -226,13 +226,14 @@ contract EnglishAuction {
         auctions[_itemId].currentHighestBidder = msg.sender;
     }
 }
-    - 这个合约包含了一个 `AuctionItem` 结构体，用于存储拍卖物品的信息，包括卖家地址、起拍价、当前最高出价和当前最高出价者。通过 `bid `函数，竞拍者可以对拍卖物品进行竞拍，要求竞拍金额高于当前最高出价，否则会失败。如果有新的最高出价，之前的最高出价者将收到退回的出价金额，并且更新当前最高出价和最高出价者为新的竞拍者。
+```
+- 这个合约包含了一个 `AuctionItem` 结构体，用于存储拍卖物品的信息，包括卖家地址、起拍价、当前最高出价和当前最高出价者。通过 `bid `函数，竞拍者可以对拍卖物品进行竞拍，要求竞拍金额高于当前最高出价，否则会失败。如果有新的最高出价，之前的最高出价者将收到退回的出价金额，并且更新当前最高出价和最高出价者为新的竞拍者。
 
 5. 拍卖成功处理：
    - 成交后，归还卖家质押的20%。
    - 抽取成交额的5%作为平台手续费，其中3%分给参与叫价的竞拍者，2%归平台。
    示例：
-   ```solidity
+```solidity
    contract EnglishAuction {
     struct AuctionItem {
         address seller;
@@ -281,7 +282,7 @@ contract EnglishAuction {
     }
 }
 ```
-    ps：`platform address` 为平台地址! 
+ ps：`platform address` 为平台地址! 
     - 按比例分配的逻辑是：
     1.`bidAmount` 变量存储了当前拍卖物品的最高出价金额，即竞拍者当前出价的金额。
     2.`bidderReward `变量计算了竞拍者应获得的手续费奖励。计算方法是竞拍者出价金额 `bidAmount` 乘以竞拍者手续费比例 `bidderFee`,然后除以总金额 3.`totalAmount`。这样计算可以保证竞拍者获得的奖励与其出价的比例成正比。
@@ -366,7 +367,7 @@ contract EnglishAuction {
     - 这部分逻辑很简单。
 8. **资金流入处理**：
    - 最终资金流入英式拍卖资金池与平台地址。
-   ```Solidity
+```Solidity
     contract EnglishAuction {
     address payable public platformAddress; // 平台地址
     address payable public fundPoolAddress; // 资金池地址
@@ -395,7 +396,7 @@ contract EnglishAuction {
     }
 }
 ```
-   - `platformAddress` 和 `fundPoolAddress` 是在合约初始化时设置的平台和资金池地址。在拍卖结束时，根据计算的结果，将资金分配到相应的地址。
+- `platformAddress` 和 `fundPoolAddress` 是在合约初始化时设置的平台和资金池地址。在拍卖结束时，根据计算的结果，将资金分配到相应的地址。
 9. 测试：
    - 编写测试用例，测试合约的各项功能是否正常。
 ```Solidity
