@@ -46,24 +46,28 @@ contract EnglishAuction {
     }
 
     function bid(uint256 _itemId) public payable {
-        // 进行竞拍
-        AuctionItem storage item = auctions[_itemId];
-        require(block.timestamp >= item.startTime, "Auction has not started yet"); // 确认拍卖已开始
-        require(!item.ended, "Auction already ended"); // 确认拍卖未结束
-        require(msg.value > item.currentHighestBid, "There already is a higher bid"); // 确认出价高于当前最高出价
+    // 进行竞拍
+    AuctionItem storage item = auctions[_itemId];
+    require(block.timestamp >= item.startTime, "Auction has not started yet"); // 确认拍卖已开始
+    require(!item.ended, "Auction already ended"); // 确认拍卖未结束
+    require(msg.value > item.currentHighestBid, "There already is a higher bid"); // 确认出价高于当前最高出价
 
-        if (item.currentHighestBid != 0) {
-            // 退还之前最高出价者的出价金额
-            pendingReturns[item.currentHighestBidder] += item.currentHighestBid;
-        }
-
-        item.currentHighestBid = msg.value;
-        item.currentHighestBidder = msg.sender;
-        item.totalBidAmount += msg.value;   // 实时更新总出价金额
-        item.bidAmounts[msg.sender] += msg.value;
-
-        emit HighestBidIncreased(_itemId, msg.sender, msg.value); // 触发最高出价增加事件
+    uint256 previousBid = item.bidAmounts[msg.sender];
+    if (previousBid > 0) {
+        uint256 additionalBid = msg.value - previousBid;
+        require(additionalBid > 0, "Bid amount must be higher than previous bid");
+        item.totalBidAmount += additionalBid; // 更新总出价金额
+    } else {
+        item.bidders.push(msg.sender); // 将新的竞拍者添加到竞拍者列表中
     }
+
+    item.bidAmounts[msg.sender] = msg.value; // 更新竞拍者的出价金额
+    item.currentHighestBid = msg.value; // 更新当前最高出价
+    item.currentHighestBidder = msg.sender; // 更新当前最高出价者
+
+    emit HighestBidIncreased(_itemId, msg.sender, msg.value); // 触发最高出价增加事件
+}
+
 
     function cancelAuction(uint256 _itemId) public {
         // 取消拍卖
@@ -90,14 +94,22 @@ contract EnglishAuction {
         uint256 sellerAmount = totalAmount * 95 / 100; // 卖家所得金额95%
         uint256 pre_bidderReward = totalAmount * 3 / 100; // 竞拍者奖励金额3%
 
-        // 分配奖励
-        for (uint i = 0; i < item.bidders.length; i++) {
-            address bidder = item.bidders[i];
-            uint256 bidderReward = (item.bidAmounts[bidder] * pre_bidderReward) / item.totalBidAmount; // 按比例分配
-            pendingReturns[bidder] += bidderReward;
-            emit RewardDistributed(_itemId, bidder, bidderReward); // 触发奖励分发事件
+     // 从竞拍者列表中移除当前最高出价者（最后的成交者）
+    for (uint i = 0; i < item.bidders.length; i++) {
+        if (item.bidders[i] == item.currentHighestBidder) {
+            item.bidders[i] = item.bidders[item.bidders.length - 1];
+            item.bidders.pop();
+            break;
         }
+    }
 
+    // 分配奖励
+    for (uint i = 0; i < item.bidders.length; i++) {
+        address bidder = item.bidders[i];
+        uint256 bidderReward = (item.bidAmounts[bidder] * pre_bidderReward) / item.totalBidAmount; // 按比例分配
+        pendingReturns[bidder] += bidderReward;
+        emit RewardDistributed(_itemId, bidder, bidderReward); // 触发奖励分发事件
+    }
         platformAddress.transfer(platformFee); // 转移平台手续费
         payable(item.seller).transfer(sellerAmount); // 转移卖家所得金额
 
