@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
+
+import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+
 contract EnglishAuction {
     struct AuctionItem {
         address seller; // 卖家地址
@@ -7,8 +10,10 @@ contract EnglishAuction {
         uint256 currentHighestBid; // 当前最高出价
         address currentHighestBidder; // 当前最高出价者地址
         bool ended; // 拍卖是否结束
-        address[] bidders; // 竞拍者列表
+        uint256 totalBidAmount; // 总出价金额
         mapping(address => uint256) bidAmounts; // 每个竞拍者的出价金额
+        address[] bidders; // 竞拍者列表
+        uint256 startTime; // 拍卖开始时间
     }
 
     mapping(uint256 => AuctionItem) public auctions; // 拍卖ID与拍卖物品的映射
@@ -16,7 +21,7 @@ contract EnglishAuction {
     uint256 public nextAuctionId; // 下一个拍卖ID
     address payable public platformAddress; // 平台地址
 
-    event AuctionCreated(uint256 auctionId, address seller, uint256 startingPrice); // 拍卖创建事件
+    event AuctionCreated(uint256 auctionId, address seller, uint256 startingPrice, uint256 _startTime); // 拍卖创建事件
     event HighestBidIncreased(uint256 auctionId, address bidder, uint256 amount); // 最高出价增加事件
     event AuctionEnded(uint256 auctionId, address winner, uint256 amount); // 拍卖结束事件
     event AuctionCancelled(uint256 auctionId); // 拍卖取消事件
@@ -26,22 +31,24 @@ contract EnglishAuction {
         platformAddress = _platformAddress; // 设置平台地址
     }
 
-    function createAuction(uint256 _startingPrice) public payable {
+    function createAuction(uint256 _startingPrice, uint256 _startTime) public payable {
         // 创建拍卖，要求卖家质押起拍价的20%
         require(msg.value >= (_startingPrice * 20 / 100), "Deposit must be at least 20% of starting price");
+        require(_startTime > block.timestamp, "Start time must be in the future");
 
         nextAuctionId++;
         AuctionItem storage newItem = auctions[nextAuctionId];
         newItem.seller = msg.sender;
         newItem.startingPrice = _startingPrice;
         newItem.ended = false;
-
-        emit AuctionCreated(nextAuctionId, msg.sender, _startingPrice); // 触发拍卖创建事件
+        newItem.startTime = _startTime;
+        emit AuctionCreated(nextAuctionId, msg.sender, _startingPrice, _startTime); // 触发拍卖创建事件
     }
 
     function bid(uint256 _itemId) public payable {
         // 进行竞拍
         AuctionItem storage item = auctions[_itemId];
+        require(block.timestamp >= item.startTime, "Auction has not started yet"); // 确认拍卖已开始
         require(!item.ended, "Auction already ended"); // 确认拍卖未结束
         require(msg.value > item.currentHighestBid, "There already is a higher bid"); // 确认出价高于当前最高出价
 
@@ -52,8 +59,8 @@ contract EnglishAuction {
 
         item.currentHighestBid = msg.value;
         item.currentHighestBidder = msg.sender;
-        item.bidders.push(msg.sender);
-        item.bidAmounts[msg.sender] = msg.value;
+        item.totalBidAmount += msg.value;   // 实时更新总出价金额
+        item.bidAmounts[msg.sender] += msg.value;
 
         emit HighestBidIncreased(_itemId, msg.sender, msg.value); // 触发最高出价增加事件
     }
@@ -82,29 +89,20 @@ contract EnglishAuction {
         uint256 platformFee = totalAmount * 2 / 100; // 平台手续费2%
         uint256 sellerAmount = totalAmount * 95 / 100; // 卖家所得金额95%
         uint256 pre_bidderReward = totalAmount * 3 / 100; // 竞拍者奖励金额3%
-        uint256 totalBidAmount;
-        uint256 bidderReward;
-    // 计算总出价金额
-    for (uint i = 0; i < item.bidders.length; i++) {
-        totalBidAmount += item.bidAmounts[item.bidders[i]];
-    }
 
-    // 根据每位竞拍者出价金额在总出价金额中的比例来分配奖励金额
-    for (uint i = 0; i < item.bidders.length; i++) {
-        address bidder = item.bidders[i];
-    // 计算竞拍者应得奖励金额
-        bidderReward = (item.bidAmounts[bidder] / totalBidAmount ) * pre_bidderReward; //按比例分配
-        pendingReturns[bidder] += bidderReward; // 将奖励金额添加到待领取金额中
-        emit RewardDistributed(_itemId, bidder, bidderReward); // 触发奖励分发事件
-    }
+        // 分配奖励
+        for (uint i = 0; i < item.bidders.length; i++) {
+            address bidder = item.bidders[i];
+            uint256 bidderReward = (item.bidAmounts[bidder] * pre_bidderReward) / item.totalBidAmount; // 按比例分配
+            pendingReturns[bidder] += bidderReward;
+            emit RewardDistributed(_itemId, bidder, bidderReward); // 触发奖励分发事件
+        }
 
         platformAddress.transfer(platformFee); // 转移平台手续费
         payable(item.seller).transfer(sellerAmount); // 转移卖家所得金额
-        pendingReturns[item.currentHighestBidder] += bidderReward; // 将奖励金额添加到竞拍者待领取金额中
 
         item.ended = true;
         emit AuctionEnded(_itemId, item.currentHighestBidder, totalAmount); // 触发拍卖结束事件
-        emit RewardDistributed(_itemId, item.currentHighestBidder, bidderReward); // 触发奖励分发事件
     }
 
     function withdraw() public {
