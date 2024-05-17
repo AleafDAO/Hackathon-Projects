@@ -20,12 +20,14 @@ contract EnglishAuction {
     mapping(address => uint256) public pendingReturns; // 竞拍者待领取的金额
     uint256 public nextAuctionId; // 下一个拍卖ID
     address payable public platformAddress; // 平台地址
+    mapping(address => uint256) public balances; // 竞拍者个人中心余额
 
     event AuctionCreated(uint256 auctionId, address seller, uint256 startingPrice, uint256 _startTime); // 拍卖创建事件
     event HighestBidIncreased(uint256 auctionId, address bidder, uint256 amount); // 最高出价增加事件
     event AuctionEnded(uint256 auctionId, address winner, uint256 amount); // 拍卖结束事件
     event AuctionCancelled(uint256 auctionId); // 拍卖取消事件
     event RewardDistributed(uint256 auctionId, address bidder, uint256 reward); // 奖励分发事件
+    event ReserveAdded(address indexed user, uint256 amount); // 添加余额事件
 
     constructor(address payable _platformAddress) {
         platformAddress = _platformAddress; // 设置平台地址
@@ -46,27 +48,30 @@ contract EnglishAuction {
     }
 
     function bid(uint256 _itemId) public payable {
-    // 进行竞拍
-    AuctionItem storage item = auctions[_itemId];
-    require(block.timestamp >= item.startTime, "Auction has not started yet"); // 确认拍卖已开始
-    require(!item.ended, "Auction already ended"); // 确认拍卖未结束
-    require(msg.value > item.currentHighestBid, "There already is a higher bid"); // 确认出价高于当前最高出价
+        // 进行竞拍
+        AuctionItem storage item = auctions[_itemId];
+        require(block.timestamp >= item.startTime, "Auction has not started yet"); // 确认拍卖已开始
+        require(!item.ended, "Auction already ended"); // 确认拍卖未结束
+        require(msg.value + balances[msg.sender] > item.currentHighestBid, "There already is a higher bid"); // 确认出价高于当前最高出价
 
-    uint256 previousBid = item.bidAmounts[msg.sender];
-    if (previousBid > 0) {
-        uint256 additionalBid = msg.value - previousBid;
-        require(additionalBid > 0, "Bid amount must be higher than previous bid");
-        item.totalBidAmount += additionalBid; // 更新总出价金额
-    } else {
-        item.bidders.push(msg.sender); // 将新的竞拍者添加到竞拍者列表中
+        uint256 totalBidAmount = msg.value + balances[msg.sender]; // 总出价金额
+        uint256 previousBid = item.bidAmounts[msg.sender]; // 之前的出价金额
+
+        if (previousBid > 0) {
+            uint256 additionalBid = totalBidAmount - previousBid; // 额外出价金额
+            item.totalBidAmount += additionalBid; // 更新总出价金额
+        } else {
+            item.bidders.push(msg.sender); // 将新的竞拍者添加到竞拍者列表中
+        }
+
+        item.bidAmounts[msg.sender] = totalBidAmount; // 更新竞拍者的出价金额
+        item.currentHighestBid = totalBidAmount; // 更新当前最高出价
+        item.currentHighestBidder = msg.sender; // 更新当前最高出价者
+
+        balances[msg.sender] = 0; // 清空用户余额，未使用的部分会在竞拍结束时返还
+
+        emit HighestBidIncreased(_itemId, msg.sender, totalBidAmount); // 触发最高出价增加事件
     }
-
-    item.bidAmounts[msg.sender] = msg.value; // 更新竞拍者的出价金额
-    item.currentHighestBid = msg.value; // 更新当前最高出价
-    item.currentHighestBidder = msg.sender; // 更新当前最高出价者
-
-    emit HighestBidIncreased(_itemId, msg.sender, msg.value); // 触发最高出价增加事件
-}
 
 
     function cancelAuction(uint256 _itemId) public {
@@ -125,5 +130,17 @@ contract EnglishAuction {
         pendingReturns[msg.sender] = 0;
 
         payable(msg.sender).transfer(amount); // 转移待领取金额到竞拍者地址
+    }
+    
+    function reserve() public payable {
+        // 增加余额
+        require(msg.value > 0, "Must send ETH to add to reserve");
+        balances[msg.sender] += msg.value;
+        emit ReserveAdded(msg.sender, msg.value); // 触发添加余额事件
+    }
+
+    function getBalance() public view returns (uint256) {
+        // 获取个人中心余额
+        return balances[msg.sender];
     }
 }
