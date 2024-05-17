@@ -123,16 +123,20 @@ contract EnglishAuction {
     }
 
     function withdraw() public {
-        // 提现待领取的金额
-        uint256 amount = pendingReturns[msg.sender];
-        require(amount > 0, "No pending returns"); // 确认有待领取金额
+    // 提现待领取的金额和个人中心余额
+    uint256 amount = pendingReturns[msg.sender];
+    uint256 balanceAmount = balances[msg.sender];
+    uint256 totalAmount = amount + balanceAmount; // 计算总提现金额
 
-        pendingReturns[msg.sender] = 0;
+    require(totalAmount > 0, "No pending returns or balance"); // 确认有待领取金额或个人中心余额
 
-        payable(msg.sender).transfer(amount); // 转移待领取金额到竞拍者地址
+    pendingReturns[msg.sender] = 0;
+    balances[msg.sender] = 0;
+
+    payable(msg.sender).transfer(totalAmount); // 转移待领取金额和个人中心余额到竞拍者地址
     }
-    
-    function receive() public payable {
+
+    function reserve() public payable {
         // 增加余额
         require(msg.value > 0, "Must send ETH to add to reserve");
         balances[msg.sender] += msg.value;
@@ -142,5 +146,11 @@ contract EnglishAuction {
     function getBalance() public view returns (uint256) {
         // 获取个人中心余额
         return balances[msg.sender];
+    }
+
+    receive() external payable {
+        // 处理接收的ETH
+        balances[msg.sender] += msg.value;
+        emit ReserveAdded(msg.sender, msg.value); // 触发添加余额事件
     }
 }
