@@ -132,7 +132,7 @@ contract EnglishAuction {
         payable(msg.sender).transfer(amount); // 转移待领取金额到竞拍者地址
     }
     
-    function reserve() public payable {
+    function receive() public payable {
         // 增加余额
         require(msg.value > 0, "Must send ETH to add to reserve");
         balances[msg.sender] += msg.value;
