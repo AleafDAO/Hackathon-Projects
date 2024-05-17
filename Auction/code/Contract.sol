@@ -135,7 +135,7 @@ contract EnglishAuction {
 
     payable(msg.sender).transfer(totalAmount); // 转移待领取金额和个人中心余额到竞拍者地址
     }
-    
+
     function reserve() public payable {
         // 增加余额
         require(msg.value > 0, "Must send ETH to add to reserve");
@@ -146,5 +146,11 @@ contract EnglishAuction {
     function getBalance() public view returns (uint256) {
         // 获取个人中心余额
         return balances[msg.sender];
+    }
+
+    receive() external payable {
+        // 处理接收的ETH
+        balances[msg.sender] += msg.value;
+        emit ReserveAdded(msg.sender, msg.value); // 触发添加余额事件
     }
 }
