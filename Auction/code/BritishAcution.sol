@@ -124,16 +124,16 @@ contract EnglishAuction {
 
     function withdraw() public {
     // 提现待领取的金额和个人中心余额
-    uint256 amount = pendingReturns[msg.sender];
-    uint256 balanceAmount = balances[msg.sender];
-    uint256 totalAmount = amount + balanceAmount; // 计算总提现金额
+        uint256 amount = pendingReturns[msg.sender];
+        uint256 balanceAmount = balances[msg.sender];
+        uint256 totalAmount = amount + balanceAmount; // 计算总提现金额
 
-    require(totalAmount > 0, "No pending returns or balance"); // 确认有待领取金额或个人中心余额
+        require(totalAmount > 0, "No pending returns or balance"); // 确认有待领取金额或个人中心余额
 
-    pendingReturns[msg.sender] = 0;
-    balances[msg.sender] = 0;
+        pendingReturns[msg.sender] = 0;
+        balances[msg.sender] = 0;
 
-    payable(msg.sender).transfer(totalAmount); // 转移待领取金额和个人中心余额到竞拍者地址
+        payable(msg.sender).transfer(totalAmount); // 转移待领取金额和个人中心余额到竞拍者地址
     }
 
     function reserve() public payable {
