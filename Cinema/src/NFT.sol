@@ -2,27 +2,39 @@
 pragma solidity ^0.8.13;
 
 import "lib/openzeppelin-contracts/contracts/token/ERC721/ERC721.sol";
+import "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import "./Tools/IsAdmin.sol";
 
 contract NFT is ERC721 {
 
     IsAdmin private isAdmin;
+    IERC20 private USDT;
+
+    address private owner;
+    address private admin;
 
     string public baseTokenURI;
 
     struct NFTMessage {
-        uint256 price;
         uint8 number;
+        uint256 price;
+        uint256 awardUSDT;
+        uint256 awardToken;
         bool isRenting;
         bool isSelling;
+        
     }
 
+    mapping (uint => uint8) public totalNumber;
     mapping (uint => NFTMessage) public getNFT;
     mapping (uint8 => mapping (uint8 => uint)) public seat;
     mapping (uint8 => uint8) public seatsOfRoom;
 
-    constructor(string memory _name,string memory _symbol,address _IsAdmin) ERC721(_name,_symbol){
+    constructor(string memory _name,string memory _symbol,address _IsAdmin,address _USDT) ERC721(_name,_symbol){
         isAdmin = IsAdmin(_IsAdmin);
+        USDT = IERC20(_USDT);
+        owner = msg.sender;
+
     }
 
 
@@ -37,26 +49,35 @@ contract NFT is ERC721 {
         return baseTokenURI;
     }
 
-    function mint(uint tokenId,string memory _baseTokenURI,uint8 _room,uint8 _seat) external {
+    function setAdmin(address _Admin) external {
+        require(msg.sender == owner,"src:::NFT::setAdmin: Owner Only.");
+        admin = _Admin;
+    }
+
+    function mint(uint tokenId,string memory _baseTokenURI,uint8 _room,uint8 _seat,uint8 _number,uint256 _price,uint256 _awardUSDT,uint256 _awardToken) external {
         // require(tokenId>0 && tokenId<Max,"contract:::NFTDemo::NFTDemo:tokenId out of range");
+        require(USDT.allowance(msg.sender,admin) > _awardUSDT*_number,"src:::NFT::mint: USDT Allowance Not Enough.");
         baseTokenURI = _baseTokenURI;
         _mint(msg.sender, tokenId);
         seat[_room][_seat] = tokenId;
-        NFTs.push(NFTMessage(10, 0, true,false));
-        setNFT(tokenId, 10, 0, true, false);
+        NFTs.push(NFTMessage(0, 0, 0, 0, true, false));
+        setNFT(tokenId, _price, _number, _awardUSDT, _awardToken, false, false);
+        totalNumber[tokenId] = _number;
     }
 
-    function getOwner(uint256 tokenId) public view returns (address) {
-        return ownerOf(tokenId);
-    }
+    // function getOwner(uint256 tokenId) public view returns (address) {
+    //     return ownerOf(tokenId);
+    // }
 
     function adminTransferFrom(address to,uint tokenId) adminOnly external {
         _adminUpdate(to, tokenId);
     }
 
-    function setNFT(uint _tokenId,uint256 _price,uint8 _number,bool _isRenting,bool _isSelling) adminOnly public {
+    function setNFT(uint _tokenId,uint256 _price,uint8 _number,uint256 _awardUSDT,uint256 _awardToken,bool _isRenting,bool _isSelling) adminOnly public {
         getNFT[_tokenId].price = _price;
         getNFT[_tokenId].number = _number;
+        getNFT[_tokenId].awardUSDT = _awardUSDT;
+        getNFT[_tokenId].awardToken = _awardToken;
         getNFT[_tokenId].isRenting = _isRenting;
         getNFT[_tokenId].isSelling = _isSelling;
         NFTs[_tokenId] = getNFT[_tokenId];
