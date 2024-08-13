@@ -5,6 +5,7 @@ import "forge-std/console.sol";
 import "./Token.sol";
 import "./NFT.sol";
 import "./Tools/IsAdmin.sol";
+import "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 contract Admin {
 
@@ -13,14 +14,19 @@ contract Admin {
     NFT private NFTA;
     Token private TokenA;
     IsAdmin private IsAdminA;
+    IERC20 private USDT;
     address private admin;
 
-    constructor(address _NFTAddress,address payable _tokenAddress,address _IsAdminAddress) {
+    mapping (address => mapping (uint => uint)) AwardUSDT;
+    mapping (address => mapping (uint => uint)) AwardToken;
+
+    constructor(address _NFTAddress,address payable _tokenAddress,address _IsAdminAddress,address _USDTAddress) {
         // NFTAddress = _NFTAddress;
         // tokenAddress = _tokenAddress;
         NFTA = NFT(_NFTAddress);
         TokenA = Token(_tokenAddress);
         IsAdminA = IsAdmin(_IsAdminAddress);
+        USDT = IERC20(_USDTAddress);
         admin = address(this);
     }
 
@@ -29,46 +35,50 @@ contract Admin {
         _;
     }
 
-    function rent(uint _tokenId,uint8 _number) external {
+    function rent(uint _tokenId) external {
         
         address _sender = msg.sender;
+        address _owner = NFTA.ownerOf(_tokenId);
 
-        (uint256 price,,bool isRenting,) = NFTA.getNFT(_tokenId);
+        (uint8 _number,uint256 _price,uint256 _awardUSDT,uint256 _awardToken,bool isRenting,) = NFTA.getNFT(_tokenId);
         require(!isRenting,"src:::Admin::rent: The seat has been rent.");
-        uint256 value = price*_number;
+        require(USDT.allowance(_sender,address(this)) > _price,"src:::Admin::rent: USDT Allowance Not Enough.");
 
-        require(TokenA.balanceOf(_sender) > value,"src:::Admin::rent: BALANCE NOT ENOUGH.");
-        TokenA.burn(_sender,price);
+        USDT.transferFrom(_sender,_owner,_price);
         NFTA.adminTransferFrom(_sender,_tokenId);
-        NFTA.setNFT(_tokenId,price,_number,true,false);
+        NFTA.setNFT(_tokenId,_price,_number,_awardUSDT,_awardToken,true,false);
 
     }
 
     function award(uint _tokenId) public adminOnly {
+
+        address _owner = NFTA.ownerOf(_tokenId);
         
-        (uint256 price,uint8 number,bool isRenting,bool isSelling) = NFTA.getNFT(_tokenId);
-        require(isRenting,"src:::Admin::award: NFT Wrong.");
-        require(!isSelling,"src:::Admin::award: Seat Selled");
+        (uint8 _number,uint256 _price,uint256 _awardUSDT,uint256 _awardToken,bool _isRenting,bool _isSelling) = NFTA.getNFT(_tokenId);
+        require(_isRenting,"src:::Admin::award: NFT Wrong.");
 
-        address NFTOwner = NFTA.ownerOf(_tokenId); 
+        if (_isSelling) {
+            AwardUSDT[_owner][_tokenId] += _awardUSDT;
+        } else {
+            AwardToken[_owner][_tokenId] += _awardToken;
+        }
 
-        TokenA.mint(NFTOwner,2*price);
-
-        if (number == 1) {
-            NFTA.setNFT(_tokenId, price, 0, false,false);
+        
+        if (_number == 1) {
+            NFTA.setNFT(_tokenId, _price, NFTA.totalNumber(_tokenId), _awardUSDT, _awardToken, false,false);
             NFTA.adminTransferFrom(admin, _tokenId);
         } else {
-            NFTA.setNFT(_tokenId, price, number-1, isRenting, false);
+            NFTA.setNFT(_tokenId, _price, _number-1, _awardUSDT, _awardToken, _isRenting, false);
         }
     }
 
     function buy(uint _tokenId) external adminOnly {
 
-        (uint256 price,uint8 number,bool isRenting,bool isSelling) = NFTA.getNFT(_tokenId);
+        (uint8 _number,uint256 _price,uint256 _awardUSDT,uint256 _awardToken,bool _isRenting,bool _isSelling) = NFTA.getNFT(_tokenId);
 
-        require(!isSelling,"src:::Admin::buy: Seat Selled");
+        require(!_isSelling,"src:::Admin::buy: Seat Selled");
 
-        NFTA.setNFT(_tokenId, price, number, isRenting, true);
+        NFTA.setNFT(_tokenId, _price, _number, _awardUSDT, _awardToken, _isRenting, true);
 
     }
 
@@ -78,24 +88,27 @@ contract Admin {
 
             uint tokenId = NFTA.getTokenId(_room, i);
 
-            (uint256 price,uint8 number,bool isRenting,bool isSelling) = NFTA.getNFT(tokenId);
+            (uint8 _number,uint256 _price,uint256 _awardUSDT,uint256 _awardToken,bool _isRenting,) = NFTA.getNFT(tokenId);
 
-            if (isRenting) {
-                if (isSelling) {
-                    NFTA.setNFT(tokenId, price, number, isRenting, false);
-                } else {
-                    award(tokenId);
-                }
+            if (_isRenting) {
+                award(tokenId);
             } else {
-                if (isSelling) {
-                    NFTA.setNFT(tokenId, price, number, isRenting, false);
-                } else {
-
-                }
+                NFTA.setNFT(tokenId, _price, _number, _awardUSDT, _awardToken, _isRenting, true);
             }
 
         }
         
+    }
+
+    function withdraw(uint _tokenId) external {
+        address _sender = msg.sender;
+        address _owner = NFTA.ownerOf(_tokenId);
+        bool success = USDT.transferFrom(_owner,_sender,AwardUSDT[_sender][_tokenId]);
+        require(success,"src:::Admin::withdraw: USTD transfer Fail.");
+        AwardUSDT[_sender][_tokenId] = 0;
+
+        TokenA.mint(_sender,AwardToken[_sender][_tokenId]);
+        AwardToken[_sender][_tokenId] = 0;
     }
 
 
