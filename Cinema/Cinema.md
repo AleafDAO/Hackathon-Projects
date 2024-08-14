@@ -28,11 +28,18 @@ award，奖励机制
 
 
 
-# 根据现有项目，需要做修改的部分：
+# 具体逻辑
 
-1.NFT，mint接口，基本完全重写，需要将参数作为NFT属性mint。
+1.mint(uint tokenId,string memory _baseTokenURI,uint8 _room,uint8 _seat,uint8 _number,uint256 _price,uint256 _awardUSDT,uint256 _awardToken),需要如此8个参数（_baseTokenURI可集成到合约中，直接生成），并将对应数据存储在一个NFTMessage struct中，后续使用时调用。判断对应USDT的allowance>totalAllowance[msg.sender]（totalAllowance在每次mint时+=awardUSDT*number）。
 
-2.award，直接交易ETH，使用ETH作为奖励，USDT可后续拓展。
-3.film，buy等略作修改。
+2.rent(uint _tokenId)通过tokenId（可转变成room，seat）租赁座位，租赁者需要提前将USDT approve给admin合约，合约中判断allowance>price，接着租赁者将USDT直接转交给当前NFT的owner，将NFT交易给租赁者，更改对应NFTMessage中的isRenting参数。
+
+3.award(uint _tokenId)通过tokenId记录奖励，判断NFTMessage中的isSelling参数，true则记录NFT owner的AwardUSTD增加awardUSTD，false则记录NFT owner的AwardToken增加awardToken（AwardUSTD和AwardToken是个mapping (address => mapping (uint => uint)) AwardUSDT），再判断NFTMessage中的number：若number !== 1，number-=1；若number == 1，将number设置为初始值（记录在NFTMessage中），再将NFT交易回影院的地址（记录在NFTMessage中），同时将isSelling设置为false。
+
+4.film(uint8 _room)通过room，对同一放映室的座位对应NFT循环进行操作：若isRenting，触发award；else，将isSelling设置为false。
+
+5.buy(uint _tokenId)通过tokenId，设置对应NFTMessage的isSelling为true。
+
+6.withdraw(uint _tokenId)通过tokenId，将每个NFT对应获得的award一次性提取出来，USDT从影院交易给租赁者，Token直接mint给租赁者。
 
 
