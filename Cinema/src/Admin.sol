@@ -40,13 +40,14 @@ contract Admin {
         address _sender = msg.sender;
         address _owner = NFTA.ownerOf(_tokenId);
 
-        (uint8 _number,uint256 _price,uint256 _awardUSDT,uint256 _awardToken,bool isRenting,) = NFTA.getNFT(_tokenId);
+        (uint8 _number,uint256 _price,uint256 _awardUSDT,uint256 _awardToken,bool isRenting,,uint8 _totalNumber,address _mainOwner) = NFTA.getNFT(_tokenId);
         require(!isRenting,"src:::Admin::rent: The seat has been rent.");
+        require(USDT.allowance(_mainOwner,address(this)) > NFTA.totalAllowance(_mainOwner));
         require(USDT.allowance(_sender,address(this)) > _price,"src:::Admin::rent: USDT Allowance Not Enough.");
 
         USDT.transferFrom(_sender,_owner,_price);
         NFTA.adminTransferFrom(_sender,_tokenId);
-        NFTA.setNFT(_tokenId,_price,_number,_awardUSDT,_awardToken,true,false);
+        NFTA.setNFT(_tokenId,_price,_number,_awardUSDT,_awardToken,true,false,_totalNumber,_mainOwner);
 
     }
 
@@ -54,7 +55,7 @@ contract Admin {
 
         address _owner = NFTA.ownerOf(_tokenId);
         
-        (uint8 _number,uint256 _price,uint256 _awardUSDT,uint256 _awardToken,bool _isRenting,bool _isSelling) = NFTA.getNFT(_tokenId);
+        (uint8 _number,uint256 _price,uint256 _awardUSDT,uint256 _awardToken,bool _isRenting,bool _isSelling,uint8 _totalNumber,address _mainOwner) = NFTA.getNFT(_tokenId);
         require(_isRenting,"src:::Admin::award: NFT Wrong.");
 
         if (_isSelling) {
@@ -65,20 +66,20 @@ contract Admin {
 
         
         if (_number == 1) {
-            NFTA.setNFT(_tokenId, _price, NFTA.totalNumber(_tokenId), _awardUSDT, _awardToken, false,false);
-            NFTA.adminTransferFrom(admin, _tokenId);
+            NFTA.setNFT(_tokenId, _price, _totalNumber, _awardUSDT, _awardToken, false, false, _totalNumber, _mainOwner);
+            NFTA.adminTransferFrom(_mainOwner, _tokenId);
         } else {
-            NFTA.setNFT(_tokenId, _price, _number-1, _awardUSDT, _awardToken, _isRenting, false);
+            NFTA.setNFT(_tokenId, _price, _number-1, _awardUSDT, _awardToken, _isRenting, false, _totalNumber, _mainOwner);
         }
     }
 
     function buy(uint _tokenId) external adminOnly {
 
-        (uint8 _number,uint256 _price,uint256 _awardUSDT,uint256 _awardToken,bool _isRenting,bool _isSelling) = NFTA.getNFT(_tokenId);
+        (uint8 _number,uint256 _price,uint256 _awardUSDT,uint256 _awardToken,bool _isRenting,bool _isSelling,uint8 _totalNumber,address _mainOwner) = NFTA.getNFT(_tokenId);
 
         require(!_isSelling,"src:::Admin::buy: Seat Selled");
 
-        NFTA.setNFT(_tokenId, _price, _number, _awardUSDT, _awardToken, _isRenting, true);
+        NFTA.setNFT(_tokenId, _price, _number, _awardUSDT, _awardToken, _isRenting, true, _totalNumber, _mainOwner);
 
     }
 
@@ -88,12 +89,12 @@ contract Admin {
 
             uint tokenId = NFTA.getTokenId(_room, i);
 
-            (uint8 _number,uint256 _price,uint256 _awardUSDT,uint256 _awardToken,bool _isRenting,) = NFTA.getNFT(tokenId);
+            (uint8 _number,uint256 _price,uint256 _awardUSDT,uint256 _awardToken,bool _isRenting,,uint8 _totalNumber,address _mainOwner) = NFTA.getNFT(tokenId);
 
             if (_isRenting) {
                 award(tokenId);
             } else {
-                NFTA.setNFT(tokenId, _price, _number, _awardUSDT, _awardToken, _isRenting, true);
+                NFTA.setNFT(tokenId, _price, _number, _awardUSDT, _awardToken, _isRenting, true, _totalNumber, _mainOwner);
             }
 
         }
@@ -101,6 +102,7 @@ contract Admin {
     }
 
     function withdraw(uint _tokenId) external {
+
         address _sender = msg.sender;
         address _owner = NFTA.ownerOf(_tokenId);
         bool success = USDT.transferFrom(_owner,_sender,AwardUSDT[_sender][_tokenId]);
@@ -109,6 +111,7 @@ contract Admin {
 
         TokenA.mint(_sender,AwardToken[_sender][_tokenId]);
         AwardToken[_sender][_tokenId] = 0;
+
     }
 
 
