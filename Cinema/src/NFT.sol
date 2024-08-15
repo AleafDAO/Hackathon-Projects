@@ -52,7 +52,7 @@ contract NFT is ERC721 {
         return baseTokenURI;
     }
 
-    function setAdmin(address _Admin) external adminOnly{
+    function setAdmin(address _Admin) external {
         require(msg.sender == owner,"src:::NFT::setAdmin: Owner Only.");
         admin = _Admin;
     }
