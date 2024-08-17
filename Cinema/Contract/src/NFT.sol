@@ -24,8 +24,16 @@ contract NFT is ERC721 {
         bool isSelling;
         uint8 totalNumber;
         address mainOwner;
-        
     }
+
+    NFTMessage[] public NFTs;
+
+    struct NFTRoomSeat {
+        uint8 room;
+        uint8 seat;
+    }
+
+    NFTRoomSeat[] public NFTSeats;
 
     // mapping (uint => uint8) public totalNumber;
     mapping (uint => NFTMessage) public getNFT;
@@ -64,7 +72,6 @@ contract NFT is ERC721 {
         baseTokenURI = _baseTokenURI;
         _mint(msg.sender, tokenId);
         seat[_room][_seat] = tokenId;
-        NFTs.push(NFTMessage(0, 0, 0, 0, true, false, 0, msg.sender));
         setNFT(tokenId, _price, _number, _awardUSDT, _awardToken, false, false, _number, msg.sender);
         
     }
@@ -78,6 +85,7 @@ contract NFT is ERC721 {
     }
 
     function setNFT(uint _tokenId,uint256 _price,uint8 _number,uint256 _awardUSDT,uint256 _awardToken,bool _isRenting,bool _isSelling,uint8 _totalNumber,address _mainOwner) adminOnly public {
+
         getNFT[_tokenId].price = _price;
         getNFT[_tokenId].number = _number;
         getNFT[_tokenId].awardUSDT = _awardUSDT;
@@ -91,6 +99,10 @@ contract NFT is ERC721 {
 
     function setSeatsNumber(uint8 _room,uint8 _seats) external {
         seatsOfRoom[_room] = _seats;
+        for(uint8 i = 0;i < _seats;i++){
+            NFTs.push(NFTMessage(0, 0, 0, 0, true, false, 0, msg.sender));
+
+        }
     }
 
     function getTokenId(uint8 _room,uint8 _seat) public view returns (uint256) {
@@ -101,10 +113,13 @@ contract NFT is ERC721 {
 
 
 
-    NFTMessage[] public NFTs;
 
     function getAllNFT() external view returns (NFTMessage[] memory) {
         return NFTs;
+    }
+
+    function getAllSeats() external view returns (NFTRoomSeat[] memory) {
+        return NFTSeats;
     }
 
 

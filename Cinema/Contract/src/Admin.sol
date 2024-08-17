@@ -9,6 +9,9 @@ import "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 contract Admin {
 
+    event EAwardUSDT(bool,uint);
+    event EAwardToken(bool,uint);
+
     // address private NFTAddress;
     // address private tokenAddress;
     NFT private NFTA;
@@ -61,8 +64,10 @@ contract Admin {
 
         if (_isSelling) {
             AwardUSDT[_owner][_tokenId] += _awardUSDT;
+            emit EAwardUSDT(true,_awardUSDT);
         } else {
             AwardToken[_owner][_tokenId] += _awardToken;
+            emit EAwardToken(true,_awardToken);
         }
 
         
@@ -106,13 +111,18 @@ contract Admin {
 
         address _sender = msg.sender;
         (,,,,,,,address _mainOwner) = NFTA.getNFT(_tokenId);
-        bool success = USDT.transferFrom(_mainOwner,_sender,AwardUSDT[_sender][_tokenId]);
+        uint _awardUSDT = AwardUSDT[_sender][_tokenId];
+        uint _awardToken = AwardToken[_sender][_tokenId];
+        bool success = USDT.transferFrom(_mainOwner,_sender,_awardUSDT);
         // console.log(success);
         require(success,"src:::Admin::withdraw: USTD transfer Fail.");
         AwardUSDT[_sender][_tokenId] = 0;
 
-        TokenA.mint(_sender,AwardToken[_sender][_tokenId]);
+        TokenA.mint(_sender,_awardToken);
         AwardToken[_sender][_tokenId] = 0;
+
+        emit EAwardUSDT(false,_awardUSDT);
+        emit EAwardToken(false,_awardToken);
 
     }
 
